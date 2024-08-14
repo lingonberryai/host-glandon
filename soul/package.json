@@ -1,15 +1,15 @@
 {
-  "name": "host-tanaki",
+  "name": "host-glandon",
   "version": "0.0.1",
   "type": "module",
   "private": true,
-  "description": "Soul created with the Soul Engine",
+  "description": "Derived from Tanaki Oz Discord Bot Soul",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
-  "author": "",
+  "author": "Professor P",
   "license": "UNLICENSED",
   "devDependencies": {
     "@types/common-tags": "^1.8.4",

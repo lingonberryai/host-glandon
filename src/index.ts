@@ -59,7 +59,7 @@ client.on("ready", () => {
 
 const soul = new Soul({
   organization: "snilgus",
-  blueprint: "host-tanaki",
+  blueprint: process.env.SOUL_BLUEPRINT_ID,
   soulID: "01",
   token: process.env.SOUL_ENGINE_API_KEY,
   debug: true,
@@ -198,8 +198,19 @@ app.get('/', (req, res) => {
 
 // Start the server
 const PORT = process.env.PORT || 6969;
-server.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-});
+const startServer = (port: number) => {
+  server.listen(port, () => {
+    console.log(`Server is running on http://localhost:${port}`);
+  }).on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.log(`Port ${port} is in use, trying port ${port + 1}...`);
+      startServer(port + 1); // Try the next port
+    } else {
+      console.error('Error starting server:', err);
+    }
+  });
+};
+
+startServer(PORT);
 
 client.login(process.env.BOT_TOKEN);
