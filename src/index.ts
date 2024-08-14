@@ -1,16 +1,7 @@
 import "dotenv/config";
-import { Client, Message, TextChannel, Events, GatewayIntentBits, Partials } from "discord.js";
-import { ActionEvent, Soul } from "@opensouls/engine";
+import { Client, Message, GatewayIntentBits } from "discord.js";
+import { Soul } from "@opensouls/engine";
 import fetch from "node-fetch";
-import path from "path";
-import express from "express";
-import http from "http";
-import { Server as SocketIOServer } from "socket.io";
-import { fileURLToPath } from "url";
-
-// Define __filename and __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export type DiscordEventData = {
   type: "messageCreate";
@@ -21,8 +12,7 @@ export type DiscordEventData = {
   userDisplayName: string;
   atMentionUsername: string;
   repliedToUserId?: string;
-  timestamp: number;
-  isBot: boolean;
+  isHost: boolean;
 };
 
 function createDiscordEventData(message: Message): DiscordEventData {
@@ -35,8 +25,7 @@ function createDiscordEventData(message: Message): DiscordEventData {
     userDisplayName: message.member?.displayName || message.author.username,
     atMentionUsername: message.author.username,
     repliedToUserId: message.mentions.users.first()?.id,
-    timestamp: Date.now(),
-    isBot: message.author.bot,
+    isHost: message.author.bot,
   };
 }
 
@@ -46,94 +35,74 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages,
   ],
-  partials: [Partials.Channel, Partials.Message, Partials.User],
-});
-
-client.on("ready", () => {
-  console.log("Host ready!");
-  console.log("Logged in as:", client.user?.tag);
-  console.log("Bot ID:", client.user?.id);
-});
-
-const soul = new Soul({
-  organization: "snilgus",
-  blueprint: process.env.SOUL_BLUEPRINT_ID,
-  soulID: "01",
-  token: process.env.SOUL_ENGINE_API_KEY,
-  debug: true,
-});
-
-soul.connect().then(() => {
-  console.log("Soul connected successfully.");
-}).catch(console.error);
-
-client.on(Events.MessageCreate, async (message) => {
-  console.log("Received message:");
-  console.log("- Content:", message.content);
-  console.log("- Author:", message.author.tag);
-  console.log("- Is bot:", message.author.bot);
-  console.log("- Channel:", message.channel.id);
-  console.log("- Guild:", message.guild?.id || "DM");
-
-  // Ignore messages from self to prevent potential loops
-  if (message.author.id === client.user?.id) {
-    console.log("Ignoring message from self");
-    return;
-  }
-
-  console.log(`🗣️ ${message.author.username} ${message.author.bot ? '(BOT)' : ''}: ${message.content}`);
-
-  const discordEvent = createDiscordEventData(message);
-
-  // Process messages from both humans and bots
-  soul.dispatch({
-    action: "chatted",
-    content: message.content,
-    name: discordEvent.atMentionUsername,
-    _metadata: {
-      discordEvent,
-      discordUserId: client.user?.id,
-    },
-  });
 });
 
 const lastMessageChannel = new Map<string, Message>();
 
+client.on("ready", () => {
+  console.log("sup i am ready");
+});
+
 client.on("messageCreate", (message) => {
-  console.log(`🗣️ ${message.author.username}: ${message.content}`);
+  const emoji = message.author.bot ? "🤖" : "👤";
+  console.log(`${emoji} ${message.author.username}: ${message.content}`);
   // Store the message context to use for replies
   lastMessageChannel.set(message.channelId, message);
 });
 
-soul.on("says", async ({ content }: { content: () => Promise<string> }) => {
+const soul = new Soul({
+  organization: process.env.SOUL_ORGANIZATION,
+  blueprint: process.env.SOUL_BLUEPRINT,
+  soulID: process.env.SOUL_ID,
+  token: process.env.SOUL_ENGINE_API_KEY,
+  debug: true,
+});
+
+soul
+  .connect()
+  .then(() => {
+    console.log("Soul connected successfully.");
+  })
+  .catch(console.error);
+
+soul.on("says", async ({ content }) => {
   const channelId = Array.from(lastMessageChannel.keys())[
     lastMessageChannel.size - 1
   ];
   const message = lastMessageChannel.get(channelId);
-  if (message) {
+  if (message && message.author.id !== client.user?.id) {
     const response = await content();
-    console.log(`reply to ${message.author.username}: ${response}`);
+    console.log(`🤖 Host is replying to ${message.author.username}: ${response}`);
     message.reply(response).catch(console.error);
     lastMessageChannel.delete(channelId);
   }
 });
 
-soul.on("paint", async (evt: ActionEvent) => {
+soul.on("paint", async (evt: any) => {
   console.log("🎨👻 paint interaction request detected from soul:");
-  console.log("Received event:", evt);
+  console.log("Received event:", JSON.stringify(evt, null, 2));
 
   console.log("_metadata:");
-  console.log(evt._metadata.discordMessage);
+  console.log(JSON.stringify(evt._metadata, null, 2));
 
   console.log("prompt:");
   console.log(evt._metadata.prompt);
 
   const discordMessage = evt._metadata.discordMessage;
+  if (!discordMessage) {
+    console.error("Discord message metadata is missing");
+    return;
+  }
+
   const messageId = discordMessage.messageId;
   const channelId = discordMessage.channelId;
   const prompt = evt._metadata.prompt;
+
+  if (!prompt) {
+    console.error("Prompt is missing");
+    return;
+  }
 
   console.log(messageId);
 
@@ -180,37 +149,23 @@ soul.on("paint", async (evt: ActionEvent) => {
   }
 });
 
-const app = express();
-const server = http.createServer(app);
-const io = new SocketIOServer(server);
+client.on("messageCreate", (message) => {
+  if (message.author.id === client.user?.id) {
+    console.log("Ignoring message from self");
+    return;
+  }
 
-// Custom console.log function to broadcast logs
-const originalConsoleLog = console.log;
-console.log = (...args) => {
-  originalConsoleLog(...args);
-  io.emit('log', args.join(' '));
-};
+  const discordEvent = createDiscordEventData(message);
 
-// Serve the HTML page
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// Start the server
-const PORT = process.env.PORT || 6969;
-const startServer = (port: number) => {
-  server.listen(port, () => {
-    console.log(`Server is running on http://localhost:${port}`);
-  }).on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-      console.log(`Port ${port} is in use, trying port ${port + 1}...`);
-      startServer(port + 1); // Try the next port
-    } else {
-      console.error('Error starting server:', err);
-    }
+  soul.dispatch({
+    action: "chatted",
+    content: message.content,
+    name: discordEvent.atMentionUsername,
+    _metadata: {
+      discordEvent,
+      discordUserId: client.user?.id,
+    },
   });
-};
-
-startServer(PORT);
+});
 
 client.login(process.env.BOT_TOKEN);

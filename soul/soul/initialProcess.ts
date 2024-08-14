@@ -36,7 +36,55 @@ const initialProcess: MentalProcess = async ({ step: initialStep }) => {
     return initialStep;
   }
 
+  const shouldPaint = await isUserAskingForPainting(invokingPerception, step, userName);
 
+  if (shouldPaint) {
+    log(`User ${userName} is asking for painting, drawing, or creating something 🎨🎨🎨🎨. consider the prior messages in your decision making too.`);
+  
+    const internalResponse = await step.next(externalDialog(`tell ${userName} tell the user how excited you are to paint their request and riff on the subject`));
+
+    const glifPrompt = await step.next(brainstorm(`now that you're excited to paint, riff on the subject you just spoke about and come up with an image prompt to paint based on the conversation messages. think of just the image prompt.`));
+
+    log("this is the internal response 🧠")
+    log(internalResponse.value)
+    
+    log("this is the glif prompt 🧠")
+    log(glifPrompt.value)
+
+    const excitementResponse = internalResponse.value;
+  
+    step = await step.next(externalDialog(excitementResponse));
+  
+    if (discordMessageMetadata) {
+      dispatch({
+        action: "says",
+        content: excitementResponse,
+        _metadata: {
+          discordMessage: discordMessageMetadata,
+        },
+      });
+      log("Dispatched a message to the user expressing excitement about painting");
+      
+
+      log("Discord message metadata:", discordMessageMetadata);
+
+
+      dispatch({
+        action: "paint",
+        content: excitementResponse, 
+        _metadata: {
+          discordMessage: discordMessageMetadata,
+          prompt: glifPrompt.value, 
+        },
+      });
+      log("Dispatched a paint request to the Discord Bot");
+  
+      step = await step.next(externalDialog(`Dispatched a paint request to the Discord Bot`));
+    } else {
+      log("Discord message metadata is undefined, unable to dispatch paint request");
+    }
+  }
+  
 
   step = await withSearchResults(step, invokingPerception);
 
@@ -69,6 +117,37 @@ function hasMoreMessagesFromSameUser(pendingPerceptions: Perception[], userName:
 
 
 
+async function isUserAskingForPainting(perception: Perception | undefined | null, step: CortexStep<any>, userName: string) {
+  const { log } = useActions();
+
+  if (!perception || !perception.content) {
+    log("No perception content available to analyze.");
+    return false;
+  }
+
+  log(`🧠 👀 Analyzing perception content: ${perception.content}`);
+  
+  const isAskingForPainting = await step.compute(
+    decision(
+      `was a painting, drawing, or art requested to be created/made by tanaki in the most RECENT message from ${userName}? `,
+      ["Yes", "Not Sure", "No"]
+    ),
+    {
+      model: "quality",
+    }
+  );
+
+  log(`🎨 Decision on asking for painting: ${isAskingForPainting}`);
+
+  // Return true if the decision is "Yes"
+  return isAskingForPainting === "Yes";
+
+}
+
+
+
+
+
 async function isUserTalkingToHost(
   perception: Perception | undefined | null,
   step: CortexStep<any>,
@@ -84,17 +163,17 @@ async function isUserTalkingToHost(
 
   const interlocutor = await step.compute(
     decision(
-      `Glandon is the moderator of this channel. Participants sometimes talk to Glandon, and sometimes between themselves. In this last message sent by ${userName}, guess which person they are probably speaking with.`,
-      ["Glandon, for sure", "Glandon, possibly", "someone else", "not sure"]
+      `Tanaki is the moderator of this channel. Participants sometimes talk to Tanaki, and sometimes between themselves. In this last message sent by ${userName}, guess which person they are probably speaking with.`,
+      ["Tanaki, for sure", "Tanaki, possibly", "someone else", "not sure"]
     ),
     {
       model: "quality",
     }
   );
 
-  log(`Glandon decided that ${userName} is talking to: ${interlocutor}`);
+  log(`Tanaki decided that ${userName} is talking to: ${interlocutor}`);
 
-  return interlocutor.toString().startsWith("Glandon");
+  return interlocutor.toString().startsWith("Tanaki");
 }
 
 async function withSearchResults(step: CortexStep<any>, invokingPerception: Perception | null | undefined) {
@@ -124,7 +203,7 @@ async function withSearchResults(step: CortexStep<any>, invokingPerception: Perc
 
   return step.withMemory(
     newMemory(prompt`
-      Glandon remembers:
+      Tanaki remembers:
       ${content}
     `)
   );
@@ -146,7 +225,7 @@ function rememberUser(step: CortexStep<any>, discordEvent: DiscordEventData | un
   }
 
   if (userLastMessage.current) {
-    remembered += `\n\nThe last message Glandon sent to ${userName} was:\n- ${userLastMessage.current}`;
+    remembered += `\n\nThe last message Tanaki sent to ${userName} was:\n- ${userLastMessage.current}`;
   }
 
   remembered = remembered.trim();
@@ -154,7 +233,7 @@ function rememberUser(step: CortexStep<any>, discordEvent: DiscordEventData | un
   if (remembered.length > 0) {
     log(`Remembered this about ${userName}:\n${remembered}`);
 
-    remembered = `Glandon remembers this about ${userName}:\n${remembered.trim()}`;
+    remembered = `Tanaki remembers this about ${userName}:\n${remembered.trim()}`;
     step = step.withMemory(newMemory(remembered));
   } else {
     log(`No memory about ${userName}`);
