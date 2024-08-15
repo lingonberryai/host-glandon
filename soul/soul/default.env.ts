@@ -1,5 +1,5 @@
 // @ts-nocheck
 {
-  discordUserId: "1242001129009844234",
-  hostName: "Tanaki Cosmic",
+  discordUserId: "1212234028623597618",
+  hostName: "Glandon",
 }

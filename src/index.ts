@@ -40,8 +40,33 @@ const client = new Client({
 
 const lastMessageChannel = new Map<string, Message>();
 
-client.on("ready", () => {
-  console.log("sup i am ready");
+client.on("ready", async () => {
+  console.log(`Bot is ready! Logged in as ${client.user?.tag}`);
+  
+  try {
+    // Get the first guild (server) the bot is in
+    const guild = client.guilds.cache.first();
+    if (guild) {
+      // Find the first text channel in the guild
+      const channel = guild.channels.cache.find(ch => ch.isTextBased());
+      if (channel) {
+        await channel.send("Hello! I'm now connected and ready to chat.");
+        console.log(`Successfully sent connection message to channel ${channel.name} in server ${guild.name}`);
+      } else {
+        console.log(`No text channels found in server ${guild.name}`);
+      }
+    } else {
+      console.log("Bot is not in any servers.");
+    }
+  } catch (error) {
+    console.error("Error sending connection message:", error);
+  }
+
+  // Log the servers the bot is currently in
+  console.log("Current servers:");
+  client.guilds.cache.forEach((guild) => {
+    console.log(`- ${guild.name} (ID: ${guild.id})`);
+  });
 });
 
 client.on("messageCreate", (message) => {
